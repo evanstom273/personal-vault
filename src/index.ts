@@ -44,7 +44,7 @@ export default {
       const headers = new Headers(response.headers);
       headers.set('Cache-Control','no-store');
       headers.set('X-Content-Type-Options','nosniff');
-      headers.set('Referrer-Policy','no-referrer');
+      headers.set('Referrer-Policy','same-origin');
       headers.set('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
       return new Response(response.body,{status:response.status,headers});
     } catch {

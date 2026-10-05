@@ -21,7 +21,15 @@ export async function authHandler(req: Request, env: AuthEnv): Promise<Response>
       return new Response(consentPage(details,consent.handle),{headers:consent.headers});
     }
     if (url.pathname === '/authorize' && req.method === 'POST') {
-      if (req.headers.get('Origin') !== env.PUBLIC_ORIGIN) return new Response('Invalid origin',{status:403});
+      // Some browsers suppress Origin (or send 'null') under privacy policies.
+      // The OAuth library still requires the unpredictable form handle AND its
+      // matching HttpOnly browser cookie before approval or denial can proceed.
+      const origin = req.headers.get('Origin');
+      const site = req.headers.get('Sec-Fetch-Site');
+      if ((origin && origin !== 'null' && origin !== env.PUBLIC_ORIGIN) ||
+          (site && site !== 'same-origin' && site !== 'none')) {
+        return new Response('Invalid origin',{status:403});
+      }
       const form = await req.formData();
       const handle = String(form.get('handle') ?? '');
       if (form.get('decision') !== 'approve') {

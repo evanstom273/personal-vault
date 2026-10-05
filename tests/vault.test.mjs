@@ -28,8 +28,8 @@ async function start(mf,client) {
   const html=await consent.text();const handle=html.match(/name="handle" value="([^"]+)"/)[1];
   return {verifier,handle,cookie:cookie(consent)};
 }
-async function approve(mf,s) {
-  const res=await mf.dispatchFetch(origin+'/authorize',{method:'POST',headers:{Origin:origin,Cookie:s.cookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({handle:s.handle,decision:'approve'}).toString(),redirect:'manual'});
+async function approve(mf,s,originHeader=origin) {
+  const res=await mf.dispatchFetch(origin+'/authorize',{method:'POST',headers:{...(originHeader === null ? {} : {Origin:originHeader}),Cookie:s.cookie,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({handle:s.handle,decision:'approve'}).toString(),redirect:'manual'});
   assert.equal(res.status,302);return {state:new URL(res.headers.get('Location')).searchParams.get('state'),cookie:cookie(res)};
 }
 async function callback(mf,up,id=60609303) {
@@ -57,6 +57,15 @@ test('OAuth security, five MCP tools, validation, and D1 persistence',async()=>{
     const forged=await start(mf,client);
     const noCookie=await mf.dispatchFetch(origin+'/authorize',{method:'POST',headers:{Origin:origin,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({handle:forged.handle,decision:'approve'}).toString()});assert.equal(noCookie.status,400);
     const evilOrigin=await mf.dispatchFetch(origin+'/authorize',{method:'POST',headers:{Origin:'https://evil.example',Cookie:forged.cookie}});assert.equal(evilOrigin.status,403);
+    // Browser regression: privacy settings may omit Origin or send literal null.
+    for (const originHeader of [null, 'null']) {
+      const s = await start(mf,client);
+      const headers = {'Content-Type':'application/x-www-form-urlencoded', ...(originHeader === null ? {} : {Origin:originHeader})};
+      const body = new URLSearchParams({handle:s.handle,decision:'approve'}).toString();
+      assert.equal((await mf.dispatchFetch(origin+'/authorize',{method:'POST',headers,body})).status,400);
+      assert.equal((await mf.dispatchFetch(origin+'/authorize',{method:'POST',headers:{...headers,Cookie:s.cookie,'Sec-Fetch-Site':'cross-site'},body})).status,403);
+      const up = await approve(mf,s,originHeader); assert.ok(up.state);
+    }
     const wrongUser=await start(mf,client);const rejected=await callback(mf,await approve(mf,wrongUser),123);assert.match(rejected.headers.get('location'),/error=access_denied/);
     const missingCookie=await approve(mf,await start(mf,client));const badCallback=await mf.dispatchFetch(origin+'/callback?state='+missingCookie.state+'&code=x');assert.equal(badCallback.status,400);
     const s=await start(mf,client);const up=await approve(mf,s);const cb=await callback(mf,up);assert.equal(cb.status,302);
