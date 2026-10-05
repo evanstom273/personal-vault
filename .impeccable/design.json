@@ -1,0 +1,247 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T23:35:43.310686+00:00",
+  "title": "Design System: Personal Vault",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Warm paper",
+        "tonalRamp": [
+          "oklch(15% 0.007 90)",
+          "oklch(26% 0.007 90)",
+          "oklch(38% 0.007 90)",
+          "oklch(49% 0.007 90)",
+          "oklch(61% 0.007 90)",
+          "oklch(72% 0.007 90)",
+          "oklch(84% 0.007 90)",
+          "oklch(95% 0.007 90)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Explorer paper",
+        "tonalRamp": [
+          "oklch(15% 0.012 105)",
+          "oklch(26% 0.012 105)",
+          "oklch(38% 0.012 105)",
+          "oklch(49% 0.012 105)",
+          "oklch(61% 0.012 105)",
+          "oklch(72% 0.012 105)",
+          "oklch(84% 0.012 105)",
+          "oklch(95% 0.012 105)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Forest ink",
+        "tonalRamp": [
+          "oklch(15% 0.035 155)",
+          "oklch(26% 0.035 155)",
+          "oklch(38% 0.035 155)",
+          "oklch(49% 0.035 155)",
+          "oklch(61% 0.035 155)",
+          "oklch(72% 0.035 155)",
+          "oklch(84% 0.035 155)",
+          "oklch(95% 0.035 155)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted ink",
+        "tonalRamp": [
+          "oklch(15% 0.022 150)",
+          "oklch(26% 0.022 150)",
+          "oklch(38% 0.022 150)",
+          "oklch(49% 0.022 150)",
+          "oklch(61% 0.022 150)",
+          "oklch(72% 0.022 150)",
+          "oklch(84% 0.022 150)",
+          "oklch(95% 0.022 150)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Quiet divider",
+        "tonalRamp": [
+          "oklch(15% 0.016 120)",
+          "oklch(26% 0.016 120)",
+          "oklch(38% 0.016 120)",
+          "oklch(49% 0.016 120)",
+          "oklch(61% 0.016 120)",
+          "oklch(72% 0.016 120)",
+          "oklch(84% 0.016 120)",
+          "oklch(95% 0.016 120)"
+        ]
+      },
+      "green": {
+        "role": "primary",
+        "displayName": "Forest green",
+        "tonalRamp": [
+          "oklch(15% 0.07 155)",
+          "oklch(26% 0.07 155)",
+          "oklch(38% 0.07 155)",
+          "oklch(49% 0.07 155)",
+          "oklch(61% 0.07 155)",
+          "oklch(72% 0.07 155)",
+          "oklch(84% 0.07 155)",
+          "oklch(95% 0.07 155)"
+        ]
+      },
+      "green-hover": {
+        "role": "primary",
+        "displayName": "Deep forest",
+        "tonalRamp": [
+          "oklch(15% 0.065 155)",
+          "oklch(26% 0.065 155)",
+          "oklch(38% 0.065 155)",
+          "oklch(49% 0.065 155)",
+          "oklch(61% 0.065 155)",
+          "oklch(72% 0.065 155)",
+          "oklch(84% 0.065 155)",
+          "oklch(95% 0.065 155)"
+        ]
+      },
+      "select": {
+        "role": "primary",
+        "displayName": "Pale green selection",
+        "tonalRamp": [
+          "oklch(15% 0.025 145)",
+          "oklch(26% 0.025 145)",
+          "oklch(38% 0.025 145)",
+          "oklch(49% 0.025 145)",
+          "oklch(61% 0.025 145)",
+          "oklch(72% 0.025 145)",
+          "oklch(84% 0.025 145)",
+          "oklch(95% 0.025 145)"
+        ]
+      },
+      "selected-ink": {
+        "role": "primary",
+        "displayName": "Selected forest ink",
+        "tonalRamp": [
+          "oklch(15% 0.06 155)",
+          "oklch(26% 0.06 155)",
+          "oklch(38% 0.06 155)",
+          "oklch(49% 0.06 155)",
+          "oklch(61% 0.06 155)",
+          "oklch(72% 0.06 155)",
+          "oklch(84% 0.06 155)",
+          "oklch(95% 0.06 155)"
+        ]
+      },
+      "red": {
+        "role": "semantic",
+        "displayName": "Deletion red",
+        "tonalRamp": [
+          "oklch(15% 0.13 28)",
+          "oklch(26% 0.13 28)",
+          "oklch(38% 0.13 28)",
+          "oklch(49% 0.13 28)",
+          "oklch(61% 0.13 28)",
+          "oklch(72% 0.13 28)",
+          "oklch(84% 0.13 28)",
+          "oklch(95% 0.13 28)"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "Action white",
+        "tonalRamp": [
+          "oklch(15% 0 0)",
+          "oklch(26% 0 0)",
+          "oklch(38% 0 0)",
+          "oklch(49% 0 0)",
+          "oklch(61% 0 0)",
+          "oklch(72% 0 0)",
+          "oklch(84% 0 0)",
+          "oklch(95% 0 0)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "Markdown preview."
+      },
+      "editor": {
+        "displayName": "Markdown source",
+        "purpose": "Plain-text editing and code."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "mobile-max",
+        "value": "700px"
+      },
+      {
+        "name": "wide-min",
+        "value": "1400px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Save or create a note.",
+      "html": "<button class=\"ds-primary\">Save</button>",
+      "css": ".ds-primary{font:15px/1.5 system-ui,sans-serif;border:1px solid var(--line,#d3d7cd);border-radius:6px;padding:8px 12px;min-height:40px;cursor:pointer;background:var(--green,#285941);color:white;border-color:var(--green,#285941)}.ds-primary:hover{background:#1c4430}.ds-primary:focus-visible{outline:2px solid var(--green,#285941);outline-offset:4px}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting notebook actions.",
+      "html": "<button class=\"ds-secondary\">Refresh</button>",
+      "css": ".ds-secondary{font:15px/1.5 system-ui,sans-serif;border:1px solid var(--line,#d3d7cd);border-radius:6px;padding:8px 12px;min-height:40px;cursor:pointer;background:transparent;color:var(--ink,#24392f)}.ds-secondary:hover{background:var(--select,#dce8dc)}.ds-secondary:focus-visible{outline:2px solid var(--green,#285941);outline-offset:4px}"
+    },
+    {
+      "name": "Delete button",
+      "kind": "button",
+      "description": "Destructive action with confirmation.",
+      "html": "<button class=\"ds-danger\">Delete note</button>",
+      "css": ".ds-danger{font:15px/1.5 system-ui,sans-serif;border:1px solid var(--line,#d3d7cd);border-radius:6px;padding:8px 12px;min-height:40px;cursor:pointer;background:transparent;color:var(--red,#9d322b)}.ds-danger:hover{background:var(--select,#dce8dc)}.ds-danger:focus-visible{outline:2px solid var(--green,#285941);outline-offset:4px}"
+    },
+    {
+      "name": "Search field",
+      "kind": "input",
+      "refersTo": "search-input",
+      "description": "Labeled search above the note list.",
+      "html": "<label class=\"ds-label\">Search names and content<input class=\"ds-search\" type=\"search\" placeholder=\"Search your vault\u2026\"></label>",
+      "css": ".ds-label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--muted,#58665d)}.ds-search{display:block;width:100%;margin:5px 0 14px;font:15px/1.5 system-ui,sans-serif;background:var(--paper,#faf9f6);color:var(--ink,#24392f);border:1px solid var(--line,#d3d7cd);padding:10px;border-radius:6px}.ds-search:focus-visible{outline:2px solid var(--green,#285941);outline-offset:4px}"
+    },
+    {
+      "name": "Selected note",
+      "kind": "nav",
+      "refersTo": "note-selected",
+      "description": "Current note with a compact excerpt.",
+      "html": "<nav aria-label=\"Notes\"><button class=\"ds-note\" aria-current=\"true\"><strong>Reading list</strong><small>Notes on books and questions.</small></button></nav>",
+      "css": ".ds-note{display:block;text-align:left;width:100%;font:15px/1.5 system-ui,sans-serif;border:0;border-radius:5px;padding:10px 12px;background:var(--select,#dce8dc);color:#173d29;cursor:pointer}.ds-note strong{display:block;font-weight:550;overflow-wrap:anywhere}.ds-note small{display:block;font-size:12px;color:var(--muted,#58665d);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ds-note:hover{background:var(--select,#dce8dc)}.ds-note:focus-visible{outline:2px solid var(--green,#285941);outline-offset:4px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Notebook interface",
+    "overview": "Preserve the existing warm off-white and forest-green palette. The interface is quiet, compact around navigation and spacious around writing. System sans keeps controls readable, serif gives reading and note titles a notebook character, and monospace belongs to Markdown editing and code.",
+    "keyCharacteristics": [
+      "Warm paper surfaces with restrained forest-green actions.",
+      "Compact explorer and spacious writing pane.",
+      "Clear saving, conflict, empty and error states."
+    ],
+    "rules": [],
+    "dos": [
+      "Do preserve warm paper surfaces and forest-green actions.",
+      "Do keep search above the note list and backlinks below the writing pane.",
+      "Do use system sans for controls, serif for reading and monospace for Markdown source.",
+      "Do keep visible focus, explicit save status and understandable conflict feedback."
+    ],
+    "donts": [
+      "Don't add a decorative hero or dashboard metrics inside the notebook.",
+      "Don't hide the editor behind unnecessary cards or split panes.",
+      "Don't use color alone to communicate destructive actions or errors."
+    ]
+  }
+}

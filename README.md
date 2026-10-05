@@ -1,27 +1,38 @@
 # Personal vault
 
-A private MCP notebook on Cloudflare Workers + D1. The public homepage contains connection instructions only: no sign-in form, notes, or private vault status. OAuth sign-in is used only when connecting an MCP client.
+A private Markdown notebook on Cloudflare Workers + D1. Open the website to write, or connect ChatGPT and other MCP clients to the same notes.
 
-- Website: https://personal-vault.evanstom273.workers.dev
+- Notebook: https://personal-vault.evanstom273.workers.dev
 - MCP endpoint: https://personal-vault.evanstom273.workers.dev/mcp
+- Source: https://github.com/evanstom273/personal-vault (the `main` branch)
 - Owner: GitHub `evanstom273`, stable account ID `60609303`
 
-## Finish GitHub authentication (one-time, in your browser)
+## Browser notebook
+
+Open the root URL and choose **Open with GitHub**. Only the configured owner can access notes. Browser login reuses the existing GitHub OAuth app, credentials and `/callback` URL; an existing installation needs no additional GitHub setup.
+
+The compact note explorer supports name/content search. Create and edit Markdown, rename a note by changing its name, switch to a sanitized reading preview, follow `[[exact note name]]` links and backlinks, download an individual `.md` file, or delete a note after confirmation. Names can contain `/` to visually group related notes; there is no separate folder tree. On phones, the **Notes** button opens the explorer. **Ctrl/Cmd+S** saves; **Ctrl/Cmd+K** focuses search.
+
+Saving writes to D1, shared with the existing five-tool MCP connector. Edit, rename and delete are browser-only capabilities; the MCP tools remain unchanged. Revision checks reject stale saves and deletes rather than overwrite another revision. Copy a conflicting draft before using **Reload**, which discards the local draft. Renaming does not rewrite wiki links in other notes.
+
+IndexedDB stores a per-browser cache of opened notes and unsaved drafts. Drafts are saved locally as you type, while **Save** persists them to D1. Browser sessions last seven days. Session expiration locks the notebook and clears the note cache, but keeps drafts for restoration after the owner signs in again. Explicit **Sign out** clears both cached notes and drafts from that browser. Browser storage can be unavailable or cleared, so it is not a backup.
+
+This is not a full offline app: a page reload, login, listing, search and server saves need a connection. An already-open session can fall back to a previously cached note while offline. There is no service worker or offline synchronization queue. The notebook provides a focused subset of Obsidian-style Markdown workflows, not full Obsidian parity, plugin support or Obsidian vault synchronization. There is no AI chat interface or OpenAI API use.
+
+## GitHub setup for a new installation
+
+Existing credentials work for both browser login and MCP authorization. For a fresh installation:
 
 1. Open https://github.com/settings/applications/new.
-2. Application name: `Personal Vault`.
-3. Homepage URL: `https://personal-vault.evanstom273.workers.dev`.
-4. Authorization callback URL: `https://personal-vault.evanstom273.workers.dev/callback`.
-5. Leave device flow disabled. Register the app and generate a client secret.
-6. In Cloudflare, open Workers & Pages → personal-vault → Settings → Variables and Secrets. Add both as **Secret**:
-   - `GITHUB_CLIENT_ID`: the GitHub app Client ID.
-   - `GITHUB_CLIENT_SECRET`: the generated GitHub client secret.
-7. Save/deploy the settings. Do not put either value into source control or a chat message.
-8. Add the MCP URL in ChatGPT's custom app/MCP connection UI, choose OAuth, and follow the consent and GitHub sign-in flow. If asked for OAuth client ID/secret in ChatGPT, leave them blank for dynamic registration; the GitHub app credentials belong only in Cloudflare. Availability of custom MCP apps depends on ChatGPT plan/workspace settings.
+2. Set the application name to `Personal Vault` and homepage to `https://personal-vault.evanstom273.workers.dev`.
+3. Set the authorization callback URL to `https://personal-vault.evanstom273.workers.dev/callback`. Leave device flow disabled.
+4. Register the app and generate a client secret.
+5. In Cloudflare, open Workers & Pages → personal-vault → Settings → Variables and Secrets. Add `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` as **Secret**, then save/deploy. Never put their values in source control or chat.
+6. Open the notebook and sign in with the owner account, or add the MCP URL in your client's custom app/MCP connection UI and choose OAuth.
 
-No laptop process or open browser tab is needed after authorization. Only the specified GitHub account can receive vault access. Missing GitHub credentials make authorization return 503; unauthenticated MCP access returns 401. The public homepage remains accessible.
+If ChatGPT asks for OAuth client ID/secret, leave them blank for dynamic registration; the GitHub credentials belong only in Cloudflare. Custom MCP availability depends on ChatGPT plan/workspace settings. No laptop process or open browser tab is required for MCP access after authorization. Missing GitHub credentials make authorization return 503; unauthenticated API/MCP access returns 401.
 
-## Tools
+## MCP tools
 
 | Tool | Behavior |
 | --- | --- |
@@ -31,41 +42,47 @@ No laptop process or open browser tab is needed after authorization. Only the sp
 | `create_note(name, content)` | Create only; no overwrite; 200-character name / 100000-character content limits |
 | `search_notes(query)` | Literal substring match in name/content, ASCII case-insensitive, up to 100 excerpts; reports truncation |
 
-Names are trimmed and control characters rejected. Notes are treated as data, never rendered as executable HTML. SQL uses bound parameters. There are no delete/edit tools, AI chat interface, OpenAI API calls, or browser-stored private data.
+Names are trimmed and control characters rejected. SQL uses bound parameters. Markdown preview is sanitized; executable HTML, inline styling, forms and images are excluded. There are no MCP edit, rename or delete tools.
 
 ## Architecture and authentication
 
-The official MCP TypeScript SDK handles stateless Streamable HTTP. Cloudflare's OAuth provider handles discovery, dynamic client registration, PKCE, token refresh and revocation. Consent and upstream state are browser-bound using the library's helpers. GitHub is used solely to verify identity; its access token is not retained or passed to MCP clients. MCP bearer tokens are issued by the vault's OAuth server and scoped to this resource. They are not a shared static token.
+The Worker serves the browser shell at `/`, its bundled script at `/app.js`, authenticated browser endpoints under `/api/`, and stateless Streamable HTTP at `/mcp` through the official MCP TypeScript SDK. Browser notes and MCP notes share the same D1 `notes` table.
 
-D1 stores notes. A separate KV namespace stores OAuth registrations/grants. Tokens have a one-hour access lifetime and a 30-day grant lifetime. Reconnect after grant expiration. Provider revocation is available at the OAuth token endpoint using RFC 7009 semantics. Deleting OAuth KV records revokes connections but does not delete notes; do not clear notes to reset authentication.
+GitHub verifies owner identity. Browser authorization uses PKCE and browser-bound, single-use login state; D1 stores hashed browser session tokens. The session cookie is Secure, HttpOnly and SameSite=Lax. Browser mutations require a same-origin request and session-bound CSRF token. GitHub access tokens are not retained or passed to MCP clients.
 
-Requests are limited to 600000 bytes. OAuth/MCP responses are no-store. Persisted observability is disabled to avoid collecting callback URLs or request data. No paid-plan upgrade was requested. Usage remains subject to the Cloudflare account's current plan and Workers/D1/KV quotas; public OAuth registration can consume KV operations.
+Cloudflare's OAuth provider handles MCP discovery, dynamic client registration, PKCE, token refresh and revocation. A separate KV namespace stores OAuth registrations/grants. MCP bearer tokens are resource-scoped, with a one-hour access lifetime and a 30-day grant lifetime; reconnect after grant expiration. Provider revocation is available at the token endpoint using RFC 7009 semantics. Deleting OAuth KV records revokes MCP connections without deleting notes. Browser sign-out revokes its browser session, independently of MCP grants.
 
-## Development / future deployment
+Requests are limited to 600000 bytes. Authentication, API and MCP responses are no-store. Persisted observability is disabled to avoid collecting callback URLs or request data. No paid-plan upgrade was requested. Usage remains subject to current Workers/D1/KV quotas; public OAuth registration can consume KV operations.
 
-Node 24+, then:
+## Development and deployment
+
+Use Node 24+:
 
 ```sh
 npm ci
 npm run types
 npm run check
 npm run build
-npm test
+npm run test
+npm run test:browser
 ```
 
-`npm test` runs the bundled Worker in workerd/Miniflare with local D1/KV and mocked GitHub HTTP responses. It exercises all five tools, validation, duplicate protection, D1 persistence across restarts, wrong-owner denial, consent CSRF protection, callback cookie binding, PKCE failure, code replay, refresh, OAuth discovery and missing-secret behavior. It does not establish live GitHub or ChatGPT connectivity.
+`build` bundles the browser app and performs a Worker dry run. `test` uses workerd/Miniflare, local D1/KV and mocked GitHub HTTP responses to exercise MCP tools, validation, persistence, OAuth and browser API/session protections. `test:browser` uses Playwright with Chromium at `/usr/bin/chromium` against the local Worker. It covers browse/search, links/backlinks, create/save/delete, draft restoration after reload and session expiry, conflicts, mobile layout and sign-out. These local tests do not verify live GitHub or ChatGPT connectivity.
 
-For later deployments from an authenticated cloud development environment:
+From an authenticated cloud development environment:
 
 ```sh
 npx wrangler d1 migrations apply personal-vault --remote
+npm run build
 npm run deploy
 ```
 
-Initial deployment used the connected Cloudflare API because the execution environment has no Cloudflare CLI credential. The initial schema was applied directly from `migrations/0001_notes.sql`; it is idempotent so Wrangler migrations can establish their tracking table later. Secrets must be configured before regular Wrangler deployment (declared in `secrets.required`). Never commit `.dev.vars`, `.env`, or vault exports.
+Both `0001_notes.sql` and `0002_browser.sql` have been applied to the remote D1 database and recorded in `d1_migrations`. The browser migration adds revisions, update timestamps and browser authentication tables; the existing note count was preserved. Do not run the second migration manually again: its column additions are not idempotent. Use migration tracking for subsequent deployments.
 
-## Verified deployment state, 2026-10-05
+The connected Cloudflare API was used when this environment lacked CLI credentials. Keep source changes on `main`. Secrets must exist before regular Wrangler deployment (`secrets.required`); never commit `.dev.vars`, `.env` or vault exports.
 
-Cloudflare confirmed Worker upload and workers.dev enabled. D1 schema creation succeeded. Local type-check, bundle and integration suite passed. GitHub secrets were not present at deployment time. Public endpoint testing was blocked by the cloud environment's host allowlist; the owner chose to test the live connection themselves. No live OAuth login or ChatGPT tool execution is claimed.
+## Verification status, 2026-10-06 (Europe/London)
 
-For the live test, connect with OAuth, request vault status, create a uniquely named test note, list/read/search it, then reconnect and read it again. There is no delete tool, so test notes remain unless removed through D1 administration.
+Cloudflare confirmed the browser notebook deployment at 100% traffic (version `9dec1408-f031-4ef8-b9d8-00376bd3dedb`, source commit `12824af` on `main`). Existing GitHub secrets and workers.dev routing were preserved. Both remote migrations are complete. `npm run check`, `npm run build`, `npm run test` and `npm run test:browser` passed. These automated checks exercise the browser against Miniflare, not a live GitHub session. Live browser login and live ChatGPT tool execution are not claimed as verified.
+
+Sign in at the notebook root, save a uniquely named test note, and use your existing MCP connection to read/search the same note. No connector recreation is required. Edit it in the browser and read it again through MCP. Delete the test note in the browser when finished.
