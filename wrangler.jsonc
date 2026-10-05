@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "personal-vault",
+  "main": "src/index.ts",
+  "account_id": "bb43051e14c6ac825f9836546fd1add2",
+  "compatibility_date": "2026-10-05",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "PUBLIC_ORIGIN": "https://personal-vault.evanstom273.workers.dev",
+    "GITHUB_OWNER_ID": "60609303"
+  },
+  "d1_databases": [{"binding":"DB","database_name":"personal-vault","database_id":"7e511df4-3b95-46ec-a90f-a13e62752e68","migrations_dir":"migrations"}],
+  "kv_namespaces": [{"binding":"OAUTH_KV","id":"1dcbfe41087c498a8f3d2a03c919c98b"}],
+  "secrets": {"required": ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]},
+  "observability": {"enabled": false}
+}
