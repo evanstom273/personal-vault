@@ -1,3 +1,6 @@
+import { notebook } from './notebook';
+import appScript from '../web/bundle.js.txt';
+import { browserApi, browserLogin } from './browser-api';
 import OAuthProvider, { type OAuthResourceAuth, insufficientScope } from '@cloudflare/workers-oauth-provider';
 import { authHandler, type AuthEnv } from './auth';
 import { handleMcp } from './mcp';
@@ -40,12 +43,20 @@ export default {
       accessTokenTTL:3600, refreshTokenTTL:2592000,
     });
     try {
-      const response = await provider.fetch(request,env as AuthEnv,ctx);
+      const response = url.pathname === '/' && request.method === 'GET'
+        ? new Response(notebook,{headers:{'Content-Type':'text/html; charset=utf-8'}})
+        : url.pathname === '/app.js' && request.method === 'GET'
+        ? new Response(appScript,{headers:{'Content-Type':'text/javascript; charset=utf-8'}})
+        : url.pathname === '/login' && request.method === 'GET'
+        ? await browserLogin(request,env)
+        : url.pathname.startsWith('/api/')
+        ? await browserApi(request,env)
+        : await provider.fetch(request,env as AuthEnv,ctx);
       const headers = new Headers(response.headers);
       headers.set('Cache-Control','no-store');
       headers.set('X-Content-Type-Options','nosniff');
       headers.set('Referrer-Policy','same-origin');
-      headers.set('Content-Security-Policy',"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
+      headers.set('Content-Security-Policy',"default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
       return new Response(response.body,{status:response.status,headers});
     } catch {
       // Never log notes, authorization headers, callback codes, or upstream tokens.

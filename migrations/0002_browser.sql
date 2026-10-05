@@ -1,0 +1,4 @@
+ALTER TABLE notes ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE notes ADD COLUMN updated_at TEXT;
+CREATE TABLE IF NOT EXISTS browser_sessions (token_hash TEXT PRIMARY KEY, owner_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS browser_logins (state_hash TEXT PRIMARY KEY, verifier TEXT NOT NULL, expires_at INTEGER NOT NULL);

@@ -1,0 +1,2 @@
+# Personal vault
+Private Markdown notebook for one owner, GitHub account 60609303. Browser users can browse, search, create, edit, rename and delete notes. ChatGPT and other MCP clients share the same D1 notes through the existing five-tool connector. GitHub verifies ownership for both browser sessions and MCP authorization. IndexedDB is a per-browser cache and draft store, not the source of truth. No OpenAI API or chat UI. Hosted on Cloudflare; no laptop daemon. User requests an Obsidian-like notebook and simple UI, usable on phone and desktop.

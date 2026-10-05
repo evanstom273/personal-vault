@@ -1,0 +1,56 @@
+import { readdirSync } from 'node:fs';
+import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { chromium } from 'playwright';
+import { readFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import assert from 'node:assert/strict';
+const origin='https://personal-vault.evanstom273.workers.dev';
+const mf=new Miniflare(convertV4MiniflareOptions({modules:[{type:'ESModule',path:'dist/index.js'},...readdirSync('dist').filter(f=>f.endsWith('.txt')).map(f=>({type:'Text',path:'dist/'+f}))],compatibilityDate:'2026-10-05',compatibilityFlags:['nodejs_compat','global_fetch_strictly_public'],kvNamespaces:['OAUTH_KV'],d1Databases:['DB'],bindings:{PUBLIC_ORIGIN:origin,GITHUB_OWNER_ID:'60609303',GITHUB_CLIENT_ID:'test',GITHUB_CLIENT_SECRET:'test'}}));
+const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+try{
+ const db=await mf.getD1Database('DB');for(const f of ['0001_notes.sql','0002_browser.sql'])await db.exec((await readFile('migrations/'+f,'utf8')).replaceAll('\n',' '));
+ const token='local-ui-test-session';await db.prepare('INSERT INTO browser_sessions VALUES (?, ?, ?)').bind(createHash('sha256').update(token).digest('hex'),'60609303',Math.floor(Date.now()/1000)+3600).run();
+ for(const [name,content] of [['Garden / Ideas','# A little room to think\n\nCollect unfinished ideas here. Follow a thread to [[Reading list]] or [[Unwritten]].\n\n## Next up\n\n- Sketch the home library\n- Make time for a long walk\n- Revisit the archive\n\n> Keep the thought before it disappears.'],['Reading list','# Reading list\n\nNotes on books and the questions they leave behind.'],['Projects / Weekend','A simple plan for Saturday.']])await db.prepare('INSERT INTO notes (name,content) VALUES (?,?)').bind(name,content).run();
+ const context=await browser.newContext({viewport:{width:1440,height:950}});
+ await context.addCookies([{name:'__Host-vault-session',value:token,url:origin,secure:true,httpOnly:true,sameSite:'Lax'}]);
+ await context.route(origin+'/**',async route=>{const req=route.request();const res=await mf.dispatchFetch(req.url(),{method:req.method(),headers:req.headers(),body:req.postDataBuffer()||undefined,redirect:'manual'});await route.fulfill({status:res.status,headers:Object.fromEntries(res.headers),body:Buffer.from(await res.arrayBuffer())});});
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(origin);await page.getByRole('button',{name:'Garden / Ideas',exact:false}).click();await page.locator('#content').waitFor({state:'visible'});
+ await page.locator('#mode').click();await page.locator('#preview h1').waitFor();
+ await mkdir('/tmp/vault-ui',{recursive:true});await page.screenshot({path:'/tmp/vault-ui/desktop.png',fullPage:true});
+ await page.getByRole('link',{name:'Reading list',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#title').value==='Reading list');await page.waitForFunction(()=>document.querySelector('#backlinks').textContent.includes('Garden / Ideas'));
+ // A second linked note must not overwrite an existing new draft.
+ await page.locator('#new').click();await page.locator('#title').fill('Keep this draft');
+ await page.locator('#mode').click();await page.locator('#content').fill('Unfinished thought');
+ await page.getByRole('button',{name:'Garden / Ideas',exact:false}).click();await page.locator('#mode').click();
+ page.on('dialog',d=>d.accept());
+ await page.getByRole('link',{name:'Unwritten',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#title').value==='Keep this draft');
+ assert.equal(await page.locator('#content').inputValue(),'Unfinished thought');
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
+ await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Note deleted');
+ await page.locator('#new').click();await page.locator('#title').fill('Browser test');await page.locator('#mode').click();await page.locator('#content').fill('# Saved from browser\n\nTest phrase <script>window.pwned=1</script>');await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
+ await page.locator('#content').fill('An unsaved draft');await page.waitForTimeout(500);
+ await page.reload();await page.getByRole('button',{name:'Browser test',exact:false}).click();await page.waitForFunction(()=>document.querySelector('#content').value==='An unsaved draft');
+ // Session expiry locks the UI but preserves drafts for the next owner login.
+ await db.prepare('UPDATE browser_sessions SET expires_at = 0').run();
+ await page.locator('#save').click();await page.locator('#login').waitFor({state:'visible'});
+ await db.prepare('UPDATE browser_sessions SET expires_at = ?').bind(Math.floor(Date.now()/1000)+3600).run();
+ await page.reload();await page.getByRole('button',{name:'Browser test',exact:false}).click();
+ await page.waitForFunction(()=>document.querySelector('#content').value==='An unsaved draft');
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
+ await page.locator('#search').fill('unsaved');await page.waitForFunction(()=>document.querySelector('#count').textContent==='1 matches');
+ await page.locator('#search').fill('');await page.waitForFunction(()=>document.querySelector('#count').textContent==='4 notes');
+ await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Note deleted');
+ await page.getByRole('button',{name:'Garden / Ideas',exact:false}).click();await page.locator('#mode').click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/vault-ui/mobile.png',fullPage:true});
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ assert.equal(await page.locator('#reload').isVisible(),true);
+ await page.locator('#mode').click();await page.locator('#content').fill('Local edit');
+ await db.prepare('UPDATE notes SET content = ?, revision = revision + 1 WHERE name = ?').bind('Changed elsewhere','Garden / Ideas').run();
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('changed'));
+ await page.locator('#reload').click();await page.waitForFunction(()=>document.querySelector('#content').value==='Changed elsewhere');
+ await page.locator('#mobile-notes').click();await page.locator('#logout').click();await page.locator('#login').waitFor({state:'visible'});
+ assert.equal((await mf.dispatchFetch(origin+'/api/notes',{headers:{Cookie:'__Host-vault-session='+token}})).status,401);
+ assert.deepEqual(errors,[]);console.log('Browser workflows passed: browse, links/backlinks, create/save, draft restoration, search, delete, mobile layout, logout.');
+ await context.close();
+}finally{await browser.close();await mf.dispose();}

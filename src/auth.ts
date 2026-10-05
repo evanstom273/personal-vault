@@ -1,3 +1,4 @@
+import { browserCallback } from './browser-api';
 import { AuthorizationError, CimdFetchError, authorizationErrorRedirect, type OAuthHelpers } from '@cloudflare/workers-oauth-provider';
 import { consentPage, home } from './pages';
 export type AuthEnv = Env & {OAUTH_PROVIDER: OAuthHelpers};
@@ -44,6 +45,7 @@ export async function authHandler(req: Request, env: AuthEnv): Promise<Response>
       return redirect(upstream.headers,github.toString());
     }
     if (url.pathname === '/callback' && req.method === 'GET') {
+      if (url.searchParams.get('state')?.startsWith('web_')) return browserCallback(req,env);
       const {request,data,headers} = await oauth.finishUpstream<{verifier:string}>(req);
       const deny = () => redirect(headers,authorizationErrorRedirect(request,'access_denied'));
       const code = url.searchParams.get('code');
