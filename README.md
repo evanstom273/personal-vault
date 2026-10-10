@@ -13,7 +13,7 @@ Open the root URL and choose **Open with GitHub**. Only the configured owner can
 
 The compact note explorer supports name/content search. Create and edit Markdown, rename a note by changing its name, switch to a sanitized reading preview, follow `[[exact note name]]` links and backlinks, download an individual `.md` file, or delete a note after confirmation. Names can contain `/` to visually group related notes; there is no separate folder tree. On phones, the **Notes** button opens the explorer. **Ctrl/Cmd+S** saves; **Ctrl/Cmd+K** focuses search.
 
-Saving writes to D1, shared with the existing five-tool MCP connector. Edit, rename and delete are browser-only capabilities; the MCP tools remain unchanged. Revision checks reject stale saves and deletes rather than overwrite another revision. Copy a conflicting draft before using **Reload**, which discards the local draft. Renaming does not rewrite wiki links in other notes.
+Saving writes to D1, shared with the MCP connector. Every save, from the browser or MCP, first copies the previous version into revision history (`note_revisions`), so earlier content is never lost; a rename carries the note's history with it. Rename and delete are browser-only. Revision checks reject stale saves and deletes rather than overwrite another revision. Copy a conflicting draft before using **Reload**, which discards the local draft. Renaming does not rewrite wiki links in other notes.
 
 IndexedDB stores a per-browser cache of opened notes and unsaved drafts. Drafts are saved locally as you type, while **Save** persists them to D1. Browser sessions last seven days. Session expiration locks the notebook and clears the note cache, but keeps drafts for restoration after the owner signs in again. Explicit **Sign out** clears both cached notes and drafts from that browser. Browser storage can be unavailable or cleared, so it is not a backup.
 
@@ -38,11 +38,14 @@ If ChatGPT asks for OAuth client ID/secret, leave them blank for dynamic registr
 | --- | --- |
 | `get_vault_status()` | Read readiness and note count |
 | `list_notes()` | Up to 1000 names and creation times; reports truncation |
-| `read_note(name)` | Exact-name lookup, full content |
+| `read_note(name)` | Exact-name lookup, full content, `revision` and `updated_at` |
 | `create_note(name, content)` | Create only; no overwrite; 200-character name / 100000-character content limits |
 | `search_notes(query)` | Literal substring match in name/content, ASCII case-insensitive, up to 100 excerpts; reports truncation |
+| `update_note(name, content, expected_revision)` | Replace content; rejected unless `expected_revision` (from `read_note`) is current; previous version kept in history |
+| `list_note_revisions(name)` | Earlier versions, newest first, up to 200, with excerpts |
+| `read_note_revision(name, revision)` | Full content of one version; restore it by passing it to `update_note` |
 
-Names are trimmed and control characters rejected. SQL uses bound parameters. Markdown preview is sanitized; executable HTML, inline styling, forms and images are excluded. There are no MCP edit, rename or delete tools.
+Names are trimmed and control characters rejected. SQL uses bound parameters. Markdown preview is sanitized; executable HTML, inline styling, forms and images are excluded. There are no MCP rename or delete tools.
 
 ## Architecture and authentication
 
@@ -67,7 +70,7 @@ npm run test
 npm run test:browser
 ```
 
-`build` bundles the browser app and performs a Worker dry run. `test` uses workerd/Miniflare, local D1/KV and mocked GitHub HTTP responses to exercise MCP tools, validation, persistence, OAuth and browser API/session protections. `test:browser` uses Playwright with Chromium at `/usr/bin/chromium` against the local Worker. It covers browse/search, links/backlinks, create/save/delete, draft restoration after reload and session expiry, conflicts, mobile layout and sign-out. These local tests do not verify live GitHub or ChatGPT connectivity.
+`build` bundles the browser app and performs a Worker dry run. Both test scripts build first. `test` uses workerd/Miniflare, local D1/KV and mocked GitHub HTTP responses to exercise MCP tools, revision history, validation, persistence, OAuth and browser API/session protections; `tests/migrations.test.mjs` checks that every migration after the two deployed ones leaves existing rows unchanged. `test:browser` uses Playwright with Chromium at `/usr/bin/chromium` (override with `CHROMIUM_PATH`) against the local Worker. It covers browse/search, links/backlinks, create/save/delete, draft restoration after reload and session expiry, conflicts, mobile layout and sign-out. These local tests do not verify live GitHub or ChatGPT connectivity.
 
 From an authenticated cloud development environment:
 
@@ -78,6 +81,20 @@ npm run deploy
 ```
 
 Both `0001_notes.sql` and `0002_browser.sql` have been applied to the remote D1 database and recorded in `d1_migrations`. The browser migration adds revisions, update timestamps and browser authentication tables; the existing note count was preserved. Do not run the second migration manually again: its column additions are not idempotent. Use migration tracking for subsequent deployments.
+
+### Applying a new migration
+
+Migrations are additive (new tables and columns), so the running Worker keeps working against the new schema. Apply them before deploying code that needs them. Take a backup and note a Time Travel bookmark first:
+
+```sh
+npx wrangler d1 time-travel info personal-vault
+npx wrangler d1 export personal-vault --remote --output ~/vault-backups/personal-vault-$(date +%F).sql
+npx wrangler d1 migrations list personal-vault --remote
+npx wrangler d1 migrations apply personal-vault --remote
+npm run build && npm run deploy
+```
+
+`migrations list` must show only the new files as pending. To roll the database back, use `npx wrangler d1 time-travel restore personal-vault --bookmark=<bookmark>`; to roll back code only, use `npx wrangler rollback`. Keep exports outside the repository.
 
 The connected Cloudflare API was used when this environment lacked CLI credentials. Keep source changes on `main`. Secrets must exist before regular Wrangler deployment (`secrets.required`); never commit `.dev.vars`, `.env` or vault exports.
 

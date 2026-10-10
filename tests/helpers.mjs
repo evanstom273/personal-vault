@@ -54,7 +54,11 @@ export async function connectMcp(mf) {
   return {
     tools: async()=>(await rpc('tools/list',{})).tools,
     // Returns the decoded JSON payload; `isError` marks tool-level failures.
-    call: async(name,args={})=>{const r=await rpc('tools/call',{name,arguments:args});return {isError:!!r.isError,data:JSON.parse(r.content[0].text)};},
+    // Input validation failures are plain text from the SDK, so wrap those as {error}.
+    call: async(name,args={})=>{
+      const r=await rpc('tools/call',{name,arguments:args});const text=r.content[0].text;
+      try {return {isError:!!r.isError,data:JSON.parse(text)};} catch {assert.ok(r.isError,text);return {isError:true,data:{error:text}};}
+    },
   };
 }
 

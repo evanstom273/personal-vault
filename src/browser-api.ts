@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { snapshot, updateNote } from './notes';
 export const hash = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const random = () => crypto.randomUUID()+crypto.randomUUID();
 const now = () => Math.floor(Date.now()/1000);
@@ -76,21 +77,18 @@ export async function browserApi(req: Request,env: Env): Promise<Response> {
       return note?Response.json(note):jsonError('Note not found.',404);
     }
     if(req.method==='PUT') {
-      const parsed=input.safeParse(await req.json());if(!parsed.success || !parsed.data.revision) return jsonError('Invalid note or missing revision.');
-      const n=parsed.data;
-      try {
-        const note=await env.DB.prepare("UPDATE notes SET name = ?, content = ?, revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE name = ? AND revision = ? RETURNING *").bind(n.name,n.content,name,n.revision).first();
-        return note?Response.json(note):jsonError('This note changed or was deleted elsewhere. Reload it before saving. Your draft is kept in this browser.',409);
-      } catch(err) {
-        if(String(err).includes('UNIQUE constraint')) return jsonError('That note name already exists.',409);
-        throw err;
-      }
+      const parsed=input.safeParse(await req.json());if(!parsed.success) return jsonError('Invalid note or missing revision.');
+      const {name:newName,content,revision}=parsed.data;if(!revision) return jsonError('Invalid note or missing revision.');
+      const r=await updateNote(env.DB,{name,newName,content,revision,source:'browser'});
+      if('note' in r) return Response.json(r.note);
+      return r.error==='name_taken'?jsonError('That note name already exists.',409):jsonError('This note changed or was deleted elsewhere. Reload it before saving. Your draft is kept in this browser.',409);
     }
     if(req.method==='DELETE') {
       const revision=Number(req.headers.get('If-Match'));
       if(!Number.isInteger(revision)||revision<1) return jsonError('Missing revision.');
-      const deleted=await env.DB.prepare('DELETE FROM notes WHERE name = ? AND revision = ? RETURNING name').bind(name,revision).first();
-      return deleted?Response.json({ok:true}):jsonError('The note changed elsewhere. Reload it before deleting.',409);
+      // Keep a copy in history until deletion moves notes to a recoverable trash.
+      const [,deleted]=await env.DB.batch([snapshot(env.DB,name,revision,'delete','browser'),env.DB.prepare('DELETE FROM notes WHERE name = ? AND revision = ? RETURNING name').bind(name,revision)]);
+      return deleted.results.length?Response.json({ok:true}):jsonError('The note changed elsewhere. Reload it before deleting.',409);
     }
   }
   if(url.pathname==='/api/backlinks' && req.method==='GET') {
