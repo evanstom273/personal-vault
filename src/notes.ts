@@ -8,11 +8,13 @@ export type Note = {name: string; content: string; created_at: string; revision:
 export type WriteResult = {note: Note} | {error: 'not_found'} | {error: 'conflict'; current: number} | {error: 'name_taken'};
 
 export const NOTE_COLUMNS = 'name, content, created_at, revision, updated_at';
+export const MAX_CONTENT = 100000;
 const NOW = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+const ARCHIVE = 'INSERT INTO note_revisions (note_name, revision, name, content, updated_at, reason, source) SELECT name, revision, name, content, updated_at, ?, ? FROM notes';
 
 // Archives the note as it is at `revision`; matches nothing if it has moved on.
 export const snapshot = (db: D1Database, name: string, revision: number, reason: 'update' | 'rename' | 'delete', source: Source) =>
-  db.prepare('INSERT INTO note_revisions (note_name, revision, name, content, updated_at, reason, source) SELECT name, revision, name, content, updated_at, ?, ? FROM notes WHERE name = ? AND revision = ?').bind(reason, source, name, revision);
+  db.prepare(`${ARCHIVE} WHERE name = ? AND revision = ?`).bind(reason, source, name, revision);
 
 async function failure(db: D1Database, name: string): Promise<WriteResult> {
   const row = await db.prepare('SELECT revision FROM notes WHERE name = ?').bind(name).first<{revision: number}>();
@@ -32,6 +34,21 @@ export async function updateNote(db: D1Database, {name, newName = name, content,
     if (String(err).includes('UNIQUE constraint')) return {error: 'name_taken'};
     throw err;
   }
+}
+
+// Appended text starts on a new line unless the note is empty or already ends with one.
+const SEPARATOR = "CASE WHEN content = '' OR substr(content, -1) = char(10) THEN '' ELSE char(10) END";
+const FITS = `length(content) + length(${SEPARATOR}) + length(?) <= ${MAX_CONTENT}`;
+
+// Archive and append in one transaction, so concurrent appends never drop text.
+export async function appendToNote(db: D1Database, name: string, text: string, source: Source): Promise<{note: Note} | {error: 'not_found' | 'too_long'}> {
+  const [, updated] = await db.batch<Note>([
+    db.prepare(`${ARCHIVE} WHERE name = ? AND ${FITS}`).bind('append', source, name, text),
+    db.prepare(`UPDATE notes SET content = content || ${SEPARATOR} || ?, revision = revision + 1, updated_at = ${NOW} WHERE name = ? AND ${FITS} RETURNING ${NOTE_COLUMNS}`).bind(text, name, text),
+  ]);
+  const note = updated.results[0];
+  if (note) return {note};
+  return {error: await db.prepare('SELECT 1 FROM notes WHERE name = ?').bind(name).first() ? 'too_long' : 'not_found'};
 }
 
 export async function listRevisions(db: D1Database, name: string, limit = 200) {

@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
-import { listRevisions, readRevision, updateNote } from './notes';
+import { appendToNote, listRevisions, readRevision, updateNote } from './notes';
 
 const nameSchema = z.string().trim().min(1).max(200).refine(s => !/[\x00-\x1f\x7f]/.test(s), 'Control characters are not allowed');
 const result = (value: unknown) => ({content: [{type: 'text' as const, text: JSON.stringify(value)}]});
@@ -35,6 +35,11 @@ export function createServer(db: D1Database) {
     const r = await updateNote(db, {name, content, revision: expected_revision, source: 'mcp'});
     if ('note' in r) return result({name: r.note.name, revision: r.note.revision, updated_at: r.note.updated_at, previous_revision: expected_revision});
     return error(r.error === 'conflict' ? `Note changed since revision ${expected_revision}; current revision is ${r.current}. Read it again before updating.` : 'Note not found');
+  });
+  server.registerTool('append_to_note', {description: 'Append text to the end of an existing note, starting on a new line. Does not need a revision; the previous version is kept in revision history. The note may hold at most 100000 characters.', inputSchema: {name: nameSchema, content: z.string().min(1).max(100000)}, annotations: {readOnlyHint:false, destructiveHint:false, idempotentHint:false, openWorldHint:false}}, async ({name,content}) => {
+    const r = await appendToNote(db, name, content, 'mcp');
+    if ('note' in r) return result({name: r.note.name, revision: r.note.revision, updated_at: r.note.updated_at, characters: [...r.note.content].length});
+    return error(r.error === 'too_long' ? 'Appending would exceed the 100000-character note limit. Nothing was changed.' : 'Note not found');
   });
   server.registerTool('list_note_revisions', {description: 'List earlier saved versions of a note, newest first (up to 200), with excerpts. The current version is not included; read_note returns it.', inputSchema: {name: nameSchema}, annotations: readOnly}, async ({name}) => {
     const history = await listRevisions(db, name);

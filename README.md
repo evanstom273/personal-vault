@@ -42,6 +42,7 @@ If ChatGPT asks for OAuth client ID/secret, leave them blank for dynamic registr
 | `create_note(name, content)` | Create only; no overwrite; 200-character name / 100000-character content limits |
 | `search_notes(query)` | Literal substring match in name/content, ASCII case-insensitive, up to 100 excerpts; reports truncation |
 | `update_note(name, content, expected_revision)` | Replace content; rejected unless `expected_revision` (from `read_note`) is current; previous version kept in history |
+| `append_to_note(name, content)` | Append on a new line; no revision needed; previous version kept in history; rejected if the note would exceed 100000 characters |
 | `list_note_revisions(name)` | Earlier versions, newest first, up to 200, with excerpts |
 | `read_note_revision(name, revision)` | Full content of one version; restore it by passing it to `update_note` |
 
