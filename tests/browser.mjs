@@ -1,14 +1,15 @@
 import { readdirSync } from 'node:fs';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { chromium } from 'playwright';
-import { readFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
+import { applyMigrations } from './helpers.mjs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 const origin='https://personal-vault.evanstom273.workers.dev';
 const mf=new Miniflare(convertV4MiniflareOptions({modules:[{type:'ESModule',path:'dist/index.js'},...readdirSync('dist').filter(f=>f.endsWith('.txt')).map(f=>({type:'Text',path:'dist/'+f}))],compatibilityDate:'2026-10-05',compatibilityFlags:['nodejs_compat','global_fetch_strictly_public'],kvNamespaces:['OAUTH_KV'],d1Databases:['DB'],bindings:{PUBLIC_ORIGIN:origin,GITHUB_OWNER_ID:'60609303',GITHUB_CLIENT_ID:'test',GITHUB_CLIENT_SECRET:'test'}}));
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 try{
- const db=await mf.getD1Database('DB');for(const f of ['0001_notes.sql','0002_browser.sql'])await db.exec((await readFile('migrations/'+f,'utf8')).replaceAll('\n',' '));
+ const db=await mf.getD1Database('DB');await applyMigrations(db);
  const token='local-ui-test-session';await db.prepare('INSERT INTO browser_sessions VALUES (?, ?, ?)').bind(createHash('sha256').update(token).digest('hex'),'60609303',Math.floor(Date.now()/1000)+3600).run();
  for(const [name,content] of [['Garden / Ideas','# A little room to think\n\nCollect unfinished ideas here. Follow a thread to [[Reading list]] or [[Unwritten]].\n\n## Next up\n\n- Sketch the home library\n- Make time for a long walk\n- Revisit the archive\n\n> Keep the thought before it disappears.'],['Reading list','# Reading list\n\nNotes on books and the questions they leave behind.'],['Projects / Weekend','A simple plan for Saturday.']])await db.prepare('INSERT INTO notes (name,content) VALUES (?,?)').bind(name,content).run();
  const context=await browser.newContext({viewport:{width:1440,height:950}});
