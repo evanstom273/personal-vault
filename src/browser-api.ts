@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { createNote, readNote, trashNote, updateNote } from './notes';
+import { createNote, listRevisions, listTrash, readNote, readRevision, restoreNote, trashNote, updateNote } from './notes';
 import { exportVault } from './export';
 import { backlinks } from './links';
 export const hash = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
@@ -92,6 +92,21 @@ export async function browserApi(req: Request,env: Env): Promise<Response> {
       const r=await trashNote(env.DB,name,revision);
       return 'error' in r?jsonError('The note changed elsewhere. Reload it before deleting.',409):Response.json({ok:true,...r});
     }
+  }
+  if(url.pathname==='/api/revisions' && req.method==='GET') {
+    const history=await listRevisions(env.DB,url.searchParams.get('name')||'');
+    return history?Response.json(history):jsonError('Note not found.',404);
+  }
+  if(url.pathname==='/api/revision' && req.method==='GET') {
+    const revision=Number(url.searchParams.get('revision'));
+    if(!Number.isInteger(revision)||revision<1) return jsonError('Invalid revision.');
+    const found=await readRevision(env.DB,url.searchParams.get('name')||'',revision);
+    return found?Response.json(found):jsonError('Revision not found.',404);
+  }
+  if(url.pathname==='/api/trash' && req.method==='GET') return Response.json(await listTrash(env.DB));
+  if(url.pathname==='/api/restore' && req.method==='POST') {
+    const note=await restoreNote(env.DB,url.searchParams.get('name')||'');
+    return note?Response.json(note):jsonError('That note is no longer in the trash.',404);
   }
   if(url.pathname==='/api/export' && req.method==='GET') {
     const now=new Date();

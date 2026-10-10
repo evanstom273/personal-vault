@@ -1,7 +1,8 @@
 import { readdirSync } from 'node:fs';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import { unzipSync, strFromU8 } from 'fflate';
 import { applyMigrations } from './helpers.mjs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -43,6 +44,36 @@ try{
  await page.locator('#search').fill('unsaved');await page.waitForFunction(()=>document.querySelector('#count').textContent==='1 matches');
  await page.locator('#search').fill('');await page.waitForFunction(()=>document.querySelector('#count').textContent==='4 notes');
  await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Moved to trash');
+ // Alias links render with their alias and open the target note.
+ await page.locator('#notes button[data-name="Reading list"]').click();await page.waitForFunction(()=>document.querySelector('#title').value==='Reading list');
+ await page.locator('#content').fill('Rewritten. See [[Garden / Ideas|the garden]].');await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
+ await page.locator('#mode').click();await page.getByRole('link',{name:'the garden',exact:true}).waitFor();await page.locator('#mode').click();
+ // History: view the earlier version and restore it into the editor, then save.
+ await page.locator('#history').click();await page.locator('#revisions').getByRole('button',{name:'View',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#revision-content').textContent.startsWith('# Reading list'));
+ await page.screenshot({path:'/tmp/vault-ui/history.png'});
+ await page.locator('#revision-restore').click();
+ await page.waitForFunction(()=>document.querySelector('#content').value.startsWith('# Reading list'));
+ assert.equal(await page.locator('#history-dialog').isVisible(),false);
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
+ assert.equal((await db.prepare('SELECT content FROM notes WHERE name = ?').bind('Reading list').first()).content,'# Reading list\n\nNotes on books and the questions they leave behind.');
+ await page.locator('#history').click();await page.locator('#revisions li').nth(1).waitFor();
+ assert.equal(await page.locator('#revisions li').count(),2);await page.locator('#close-history').click();
+ // Trash: notes moved to the trash earlier in this run come back intact.
+ await page.locator('#trash-open').click();await page.locator('#trash-list li').nth(1).waitFor();
+ assert.deepEqual((await page.locator('#trash-list strong').allTextContents()).sort(),['Browser test','Keep this draft']);
+ await page.screenshot({path:'/tmp/vault-ui/trash.png'});
+ await page.locator('#trash-list li',{hasText:'Keep this draft'}).getByRole('button',{name:'Restore'}).click();
+ await page.waitForFunction(()=>document.querySelector('#title').value==='Keep this draft'&&document.querySelector('#status').textContent==='Restored from trash');
+ assert.equal(await page.locator('#content').inputValue(),'Unfinished thought');
+ await page.locator('#notes button[data-name="Keep this draft"]').waitFor();
+ // Export: the whole vault downloads as a ZIP with notes, trash and history.
+ const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#export-all').click()]);
+ assert.match(download.suggestedFilename(),/^personal-vault-\d{4}-\d{2}-\d{2}\.zip$/);
+ const files=unzipSync(new Uint8Array(await readFile(await download.path())));
+ assert.equal(strFromU8(files['notes/Keep this draft.md']),'Unfinished thought');
+ assert.ok(files['trash/Browser test.md']&&files['history/Reading list/r1.md']&&files['vault.json']);
+ await page.waitForFunction(()=>document.querySelector('#status').textContent==='Export downloaded');
  await page.getByRole('button',{name:'Garden / Ideas',exact:false}).click();await page.locator('#mode').click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/vault-ui/mobile.png',fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#reload').isVisible(),true);
@@ -52,6 +83,6 @@ try{
  await page.locator('#reload').click();await page.waitForFunction(()=>document.querySelector('#content').value==='Changed elsewhere');
  await page.locator('#mobile-notes').click();await page.locator('#logout').click();await page.locator('#login').waitFor({state:'visible'});
  assert.equal((await mf.dispatchFetch(origin+'/api/notes',{headers:{Cookie:'__Host-vault-session='+token}})).status,401);
- assert.deepEqual(errors,[]);console.log('Browser workflows passed: browse, links/backlinks, create/save, draft restoration, search, delete, mobile layout, logout.');
+ assert.deepEqual(errors,[]);console.log('Browser workflows passed: browse, links/backlinks, alias links, create/save, draft restoration, search, trash and restore, history and restore, export, mobile layout, logout.');
  await context.close();
 }finally{await browser.close();await mf.dispose();}
