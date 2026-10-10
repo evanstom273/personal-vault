@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { z } from 'zod';
+import { linkedNotes } from './links';
 import { appendToNote, createNote, listRevisions, listTrash, readNote, readRevision, restoreNote, trashNote, updateNote } from './notes';
 
 const nameSchema = z.string().trim().min(1).max(200).refine(s => !/[\x00-\x1f\x7f]/.test(s), 'Control characters are not allowed');
@@ -52,6 +53,10 @@ export function createServer(db: D1Database) {
     return note ? result({name: note.name, revision: note.revision, restored: true}) : error('No note with that name is in the trash');
   });
   server.registerTool('list_trash', {description: 'List notes in the trash, most recently deleted first (up to 1000), with excerpts.', inputSchema: {}, annotations: readOnly}, async () => result(await listTrash(db)));
+  server.registerTool('get_linked_notes', {description: 'Get the notes linked from a note and the notes linking to it. Outgoing [[wikilinks]] are listed in order with status exists, missing or trashed; backlinks (up to 100) include text around the link. [[Name|alias]] and [[Name#heading]] link to the note named exactly Name.', inputSchema: {name: nameSchema}, annotations: readOnly}, async ({name}) => {
+    const linked = await linkedNotes(db, name);
+    return linked ? result(linked) : error('Note not found');
+  });
   server.registerTool('list_note_revisions', {description: 'List earlier saved versions of a note, newest first (up to 200), with excerpts. The current version is not included; read_note returns it.', inputSchema: {name: nameSchema}, annotations: readOnly}, async ({name}) => {
     const history = await listRevisions(db, name);
     return history ? result(history) : error('Note not found');

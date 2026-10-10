@@ -11,7 +11,7 @@ A private Markdown notebook on Cloudflare Workers + D1. Open the website to writ
 
 Open the root URL and choose **Open with GitHub**. Only the configured owner can access notes. Browser login reuses the existing GitHub OAuth app, credentials and `/callback` URL; an existing installation needs no additional GitHub setup.
 
-The compact note explorer supports name/content search. Create and edit Markdown, rename a note by changing its name, switch to a sanitized reading preview, follow `[[exact note name]]` links and backlinks, download an individual `.md` file, or move a note to the trash after confirmation. Names can contain `/` to visually group related notes; there is no separate folder tree. On phones, the **Notes** button opens the explorer. **Ctrl/Cmd+S** saves; **Ctrl/Cmd+K** focuses search.
+The compact note explorer supports name/content search. Create and edit Markdown, rename a note by changing its name, switch to a sanitized reading preview, follow `[[exact note name]]` links and backlinks (`[[Name|alias]]` and `[[Name#heading]]` also count as backlinks), download an individual `.md` file, or move a note to the trash after confirmation. Names can contain `/` to visually group related notes; there is no separate folder tree. On phones, the **Notes** button opens the explorer. **Ctrl/Cmd+S** saves; **Ctrl/Cmd+K** focuses search.
 
 Saving writes to D1, shared with the MCP connector. Every save, from the browser or MCP, first copies the previous version into revision history (`note_revisions`), so earlier content is never lost; a rename carries the note's history with it. Deleting, from the browser or MCP, moves a note to the trash: it disappears from listing, search and reading but keeps its content and history, and can be restored. A trashed note's name stays reserved until it is restored. Nothing is permanently deleted. Rename is browser-only. Revision checks reject stale saves and deletes rather than overwrite another revision. Copy a conflicting draft before using **Reload**, which discards the local draft. Renaming does not rewrite wiki links in other notes.
 
@@ -50,6 +50,7 @@ If ChatGPT asks for OAuth client ID/secret, leave them blank for dynamic registr
 | `delete_note(name)` | Move to the trash; content and history kept |
 | `restore_note(name)` | Bring a note back from the trash unchanged |
 | `list_trash()` | Trashed notes, most recent first, up to 1000, with excerpts |
+| `get_linked_notes(name)` | Outgoing `[[wikilinks]]` with status exists/missing/trashed, and backlinks (up to 100) with surrounding text |
 | `list_note_revisions(name)` | Earlier versions, newest first, up to 200, with excerpts |
 | `read_note_revision(name, revision)` | Full content of one version; restore it by passing it to `update_note` |
 

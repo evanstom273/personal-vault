@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createNote, readNote, trashNote, updateNote } from './notes';
 import { exportVault } from './export';
+import { backlinks } from './links';
 export const hash = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const random = () => crypto.randomUUID()+crypto.randomUUID();
 const now = () => Math.floor(Date.now()/1000);
@@ -98,8 +99,7 @@ export async function browserApi(req: Request,env: Env): Promise<Response> {
   }
   if(url.pathname==='/api/backlinks' && req.method==='GET') {
     const name=url.searchParams.get('name')||'';
-    const rows=await env.DB.prepare('SELECT name FROM notes WHERE deleted_at IS NULL AND instr(content, ?) > 0 ORDER BY name LIMIT 100').bind('[['+name+']]').all();
-    return Response.json(rows.results);
+    return Response.json((await backlinks(env.DB,name)).notes.map(n=>({name:n.name})));
   }
   return jsonError('Not found.',404);
 }
