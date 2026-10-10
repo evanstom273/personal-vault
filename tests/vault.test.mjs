@@ -1,11 +1,12 @@
 import { readdirSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { createHash, randomBytes } from 'node:crypto';
+import { applyMigrations } from './helpers.mjs';
 
 const origin = 'https://personal-vault.evanstom273.workers.dev';
 let githubId = 60609303;
@@ -48,8 +49,7 @@ const decoded = r => JSON.parse(r.content[0].text);
 test('OAuth security, five MCP tools, validation, and D1 persistence',async()=>{
   const path=await mkdtemp(join(tmpdir(),'vault-test-'));let mf=new Miniflare(convertV4MiniflareOptions(config(path)));
   try {
-    const db=await mf.getD1Database('DB');await db.exec((await readFile('migrations/0001_notes.sql','utf8')).replaceAll('\n',' '));
-    await db.exec((await readFile('migrations/0002_browser.sql','utf8')).replaceAll('\n',' '));
+    const db=await mf.getD1Database('DB');await applyMigrations(db);
     const home=await mf.dispatchFetch(origin);assert.equal(home.status,200);assert.match(await home.text(),/Open with GitHub/);
     for(const method of ['GET','POST','DELETE']) {
       const res=await mf.dispatchFetch(origin+'/mcp',{method,headers:{Authorization:'Bearer invalid'}});assert.equal(res.status,401);assert.match(res.headers.get('www-authenticate'),/resource_metadata/);

@@ -107,11 +107,11 @@ The login title uses the display role; the note-name field uses the title role. 
 
 The desktop app fills the viewport height with a left explorer and a flexible writing pane. The explorer is (290px), growing to (320px) from a viewport width of (1400px). Its search stays above a separately scrolling list. The workspace header is (72px) high. The editor uses (28px) vertical padding and horizontal padding of `clamp(20px, 5vw, 76px)`.
 
-At widths up to (700px), the app uses one column. A **Notes** button reveals the explorer as a fixed full-width panel beneath the (64px) header. The editor has (20px) padding. Keep the toolbar compact and the writing area full-width. Preview replaces the Markdown source rather than creating a competing split pane. Backlinks sit below the writing area, followed by download, delete and word count.
+At widths up to (700px), the app uses one column. A **Notes** button reveals the explorer as a fixed full-width panel beneath the (64px) header. The editor has (20px) padding. Keep the toolbar compact and the writing area full-width. Preview replaces the Markdown source rather than creating a competing split pane. Backlinks sit below the writing area, followed by history, download, move to trash and word count. Action rows wrap rather than squeeze labels.
 
 ## Elevation & Depth
 
-The interface is flat: paper and panel tones, single-pixel borders and spacing separate regions. There are no box shadows. The help dialog uses a dark translucent backdrop (`#18281d88`) to distinguish the modal layer.
+The interface is flat: paper and panel tones, single-pixel borders and spacing separate regions. There are no box shadows. Dialogs (help, history, trash) use a dark translucent backdrop (`#18281d88`) to distinguish the modal layer.
 
 ## Shapes
 

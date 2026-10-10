@@ -1,14 +1,16 @@
 import { readdirSync } from 'node:fs';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { chromium } from 'playwright';
-import { readFile, mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
+import { unzipSync, strFromU8 } from 'fflate';
+import { applyMigrations } from './helpers.mjs';
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 const origin='https://personal-vault.evanstom273.workers.dev';
 const mf=new Miniflare(convertV4MiniflareOptions({modules:[{type:'ESModule',path:'dist/index.js'},...readdirSync('dist').filter(f=>f.endsWith('.txt')).map(f=>({type:'Text',path:'dist/'+f}))],compatibilityDate:'2026-10-05',compatibilityFlags:['nodejs_compat','global_fetch_strictly_public'],kvNamespaces:['OAUTH_KV'],d1Databases:['DB'],bindings:{PUBLIC_ORIGIN:origin,GITHUB_OWNER_ID:'60609303',GITHUB_CLIENT_ID:'test',GITHUB_CLIENT_SECRET:'test'}}));
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
 try{
- const db=await mf.getD1Database('DB');for(const f of ['0001_notes.sql','0002_browser.sql'])await db.exec((await readFile('migrations/'+f,'utf8')).replaceAll('\n',' '));
+ const db=await mf.getD1Database('DB');await applyMigrations(db);
  const token='local-ui-test-session';await db.prepare('INSERT INTO browser_sessions VALUES (?, ?, ?)').bind(createHash('sha256').update(token).digest('hex'),'60609303',Math.floor(Date.now()/1000)+3600).run();
  for(const [name,content] of [['Garden / Ideas','# A little room to think\n\nCollect unfinished ideas here. Follow a thread to [[Reading list]] or [[Unwritten]].\n\n## Next up\n\n- Sketch the home library\n- Make time for a long walk\n- Revisit the archive\n\n> Keep the thought before it disappears.'],['Reading list','# Reading list\n\nNotes on books and the questions they leave behind.'],['Projects / Weekend','A simple plan for Saturday.']])await db.prepare('INSERT INTO notes (name,content) VALUES (?,?)').bind(name,content).run();
  const context=await browser.newContext({viewport:{width:1440,height:950}});
@@ -28,7 +30,7 @@ try{
  await page.waitForFunction(()=>document.querySelector('#title').value==='Keep this draft');
  assert.equal(await page.locator('#content').inputValue(),'Unfinished thought');
  await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
- await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Note deleted');
+ await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Moved to trash');
  await page.locator('#new').click();await page.locator('#title').fill('Browser test');await page.locator('#mode').click();await page.locator('#content').fill('# Saved from browser\n\nTest phrase <script>window.pwned=1</script>');await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
  await page.locator('#content').fill('An unsaved draft');await page.waitForTimeout(500);
  await page.reload();await page.getByRole('button',{name:'Browser test',exact:false}).click();await page.waitForFunction(()=>document.querySelector('#content').value==='An unsaved draft');
@@ -41,7 +43,37 @@ try{
  await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
  await page.locator('#search').fill('unsaved');await page.waitForFunction(()=>document.querySelector('#count').textContent==='1 matches');
  await page.locator('#search').fill('');await page.waitForFunction(()=>document.querySelector('#count').textContent==='4 notes');
- await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Note deleted');
+ await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Moved to trash');
+ // Alias links render with their alias and open the target note.
+ await page.locator('#notes button[data-name="Reading list"]').click();await page.waitForFunction(()=>document.querySelector('#title').value==='Reading list');
+ await page.locator('#content').fill('Rewritten. See [[Garden / Ideas|the garden]].');await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
+ await page.locator('#mode').click();await page.getByRole('link',{name:'the garden',exact:true}).waitFor();await page.locator('#mode').click();
+ // History: view the earlier version and restore it into the editor, then save.
+ await page.locator('#history').click();await page.locator('#revisions').getByRole('button',{name:'View',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#revision-content').textContent.startsWith('# Reading list'));
+ await page.screenshot({path:'/tmp/vault-ui/history.png'});
+ await page.locator('#revision-restore').click();
+ await page.waitForFunction(()=>document.querySelector('#content').value.startsWith('# Reading list'));
+ assert.equal(await page.locator('#history-dialog').isVisible(),false);
+ await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
+ assert.equal((await db.prepare('SELECT content FROM notes WHERE name = ?').bind('Reading list').first()).content,'# Reading list\n\nNotes on books and the questions they leave behind.');
+ await page.locator('#history').click();await page.locator('#revisions li').nth(1).waitFor();
+ assert.equal(await page.locator('#revisions li').count(),2);await page.locator('#close-history').click();
+ // Trash: notes moved to the trash earlier in this run come back intact.
+ await page.locator('#trash-open').click();await page.locator('#trash-list li').nth(1).waitFor();
+ assert.deepEqual((await page.locator('#trash-list strong').allTextContents()).sort(),['Browser test','Keep this draft']);
+ await page.screenshot({path:'/tmp/vault-ui/trash.png'});
+ await page.locator('#trash-list li',{hasText:'Keep this draft'}).getByRole('button',{name:'Restore'}).click();
+ await page.waitForFunction(()=>document.querySelector('#title').value==='Keep this draft'&&document.querySelector('#status').textContent==='Restored from trash');
+ assert.equal(await page.locator('#content').inputValue(),'Unfinished thought');
+ await page.locator('#notes button[data-name="Keep this draft"]').waitFor();
+ // Export: the whole vault downloads as a ZIP with notes, trash and history.
+ const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#export-all').click()]);
+ assert.match(download.suggestedFilename(),/^personal-vault-\d{4}-\d{2}-\d{2}\.zip$/);
+ const files=unzipSync(new Uint8Array(await readFile(await download.path())));
+ assert.equal(strFromU8(files['notes/Keep this draft.md']),'Unfinished thought');
+ assert.ok(files['trash/Browser test.md']&&files['history/Reading list/r1.md']&&files['vault.json']);
+ await page.waitForFunction(()=>document.querySelector('#status').textContent==='Export downloaded');
  await page.getByRole('button',{name:'Garden / Ideas',exact:false}).click();await page.locator('#mode').click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/vault-ui/mobile.png',fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#reload').isVisible(),true);
@@ -51,6 +83,6 @@ try{
  await page.locator('#reload').click();await page.waitForFunction(()=>document.querySelector('#content').value==='Changed elsewhere');
  await page.locator('#mobile-notes').click();await page.locator('#logout').click();await page.locator('#login').waitFor({state:'visible'});
  assert.equal((await mf.dispatchFetch(origin+'/api/notes',{headers:{Cookie:'__Host-vault-session='+token}})).status,401);
- assert.deepEqual(errors,[]);console.log('Browser workflows passed: browse, links/backlinks, create/save, draft restoration, search, delete, mobile layout, logout.');
+ assert.deepEqual(errors,[]);console.log('Browser workflows passed: browse, links/backlinks, alias links, create/save, draft restoration, search, trash and restore, history and restore, export, mobile layout, logout.');
  await context.close();
 }finally{await browser.close();await mf.dispose();}

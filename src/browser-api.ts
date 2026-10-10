@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { createNote, listRevisions, listTrash, readNote, readRevision, restoreNote, trashNote, updateNote } from './notes';
+import { exportVault } from './export';
+import { backlinks } from './links';
 export const hash = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const random = () => crypto.randomUUID()+crypto.randomUUID();
 const now = () => Math.floor(Date.now()/1000);
@@ -43,6 +46,7 @@ export async function browserCallback(req: Request,env: Env) {
 }
 const input=z.object({name:z.string().trim().min(1).max(200).refine(s=>!/[\x00-\x1f\x7f]/.test(s)),content:z.string().max(100000),revision:z.number().int().positive().optional()});
 const jsonError=(error: string,status=400)=>Response.json({error},{status});
+const nameTaken=(trashed: boolean)=>trashed?'A note in the trash already uses that name. Restore it or choose another name.':'That note name already exists.';
 export async function browserApi(req: Request,env: Env): Promise<Response> {
   const token=cookie(req,'__Host-vault-session');
   const session=token && await env.DB.prepare('SELECT owner_id FROM browser_sessions WHERE token_hash = ? AND expires_at > ?').bind(await hash(token),now()).first<{owner_id:string}>();
@@ -60,43 +64,57 @@ export async function browserApi(req: Request,env: Env): Promise<Response> {
   if(url.pathname==='/api/notes' && req.method==='GET') {
     const q=(url.searchParams.get('q')||'').slice(0,200);
     const after=url.searchParams.get('after')||'';
-    const rows=await env.DB.prepare('SELECT name, created_at, updated_at, revision, substr(content,1,180) AS excerpt FROM notes WHERE name > ? AND (instr(lower(name),lower(?)) > 0 OR instr(lower(content),lower(?)) > 0) ORDER BY name LIMIT 201').bind(after,q,q).all<{name:string}>();
+    const rows=await env.DB.prepare('SELECT name, created_at, updated_at, revision, substr(content,1,180) AS excerpt FROM notes WHERE deleted_at IS NULL AND name > ? AND (instr(lower(name),lower(?)) > 0 OR instr(lower(content),lower(?)) > 0) ORDER BY name LIMIT 201').bind(after,q,q).all<{name:string}>();
     return Response.json({notes:rows.results.slice(0,200),next:rows.results.length>200?rows.results[199].name:null});
   }
   if(url.pathname==='/api/notes' && req.method==='POST') {
     const parsed=input.safeParse(await req.json());if(!parsed.success) return jsonError('Use a name of 1–200 characters and content up to 100000 characters.');
     const {name,content}=parsed.data;
-    const note=await env.DB.prepare('INSERT INTO notes (name,content) VALUES (?,?) ON CONFLICT(name) DO NOTHING RETURNING *').bind(name,content).first();
-    return note?Response.json(note,{status:201}):jsonError('That note name already exists.',409);
+    const r=await createNote(env.DB,name,content);
+    return 'note' in r?Response.json(r.note,{status:201}):jsonError(nameTaken(r.trashed),409);
   }
   if(url.pathname==='/api/note') {
     const name=url.searchParams.get('name');if(!name) return jsonError('Missing note name.');
     if(req.method==='GET') {
-      const note=await env.DB.prepare('SELECT * FROM notes WHERE name = ?').bind(name).first();
+      const note=await readNote(env.DB,name);
       return note?Response.json(note):jsonError('Note not found.',404);
     }
     if(req.method==='PUT') {
-      const parsed=input.safeParse(await req.json());if(!parsed.success || !parsed.data.revision) return jsonError('Invalid note or missing revision.');
-      const n=parsed.data;
-      try {
-        const note=await env.DB.prepare("UPDATE notes SET name = ?, content = ?, revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE name = ? AND revision = ? RETURNING *").bind(n.name,n.content,name,n.revision).first();
-        return note?Response.json(note):jsonError('This note changed or was deleted elsewhere. Reload it before saving. Your draft is kept in this browser.',409);
-      } catch(err) {
-        if(String(err).includes('UNIQUE constraint')) return jsonError('That note name already exists.',409);
-        throw err;
-      }
+      const parsed=input.safeParse(await req.json());if(!parsed.success) return jsonError('Invalid note or missing revision.');
+      const {name:newName,content,revision}=parsed.data;if(!revision) return jsonError('Invalid note or missing revision.');
+      const r=await updateNote(env.DB,{name,newName,content,revision,source:'browser'});
+      if('note' in r) return Response.json(r.note);
+      return r.error==='name_taken'?jsonError(nameTaken(r.trashed),409):jsonError('This note changed or was deleted elsewhere. Reload it before saving. Your draft is kept in this browser.',409);
     }
     if(req.method==='DELETE') {
       const revision=Number(req.headers.get('If-Match'));
       if(!Number.isInteger(revision)||revision<1) return jsonError('Missing revision.');
-      const deleted=await env.DB.prepare('DELETE FROM notes WHERE name = ? AND revision = ? RETURNING name').bind(name,revision).first();
-      return deleted?Response.json({ok:true}):jsonError('The note changed elsewhere. Reload it before deleting.',409);
+      const r=await trashNote(env.DB,name,revision);
+      return 'error' in r?jsonError('The note changed elsewhere. Reload it before deleting.',409):Response.json({ok:true,...r});
     }
+  }
+  if(url.pathname==='/api/revisions' && req.method==='GET') {
+    const history=await listRevisions(env.DB,url.searchParams.get('name')||'');
+    return history?Response.json(history):jsonError('Note not found.',404);
+  }
+  if(url.pathname==='/api/revision' && req.method==='GET') {
+    const revision=Number(url.searchParams.get('revision'));
+    if(!Number.isInteger(revision)||revision<1) return jsonError('Invalid revision.');
+    const found=await readRevision(env.DB,url.searchParams.get('name')||'',revision);
+    return found?Response.json(found):jsonError('Revision not found.',404);
+  }
+  if(url.pathname==='/api/trash' && req.method==='GET') return Response.json(await listTrash(env.DB));
+  if(url.pathname==='/api/restore' && req.method==='POST') {
+    const note=await restoreNote(env.DB,url.searchParams.get('name')||'');
+    return note?Response.json(note):jsonError('That note is no longer in the trash.',404);
+  }
+  if(url.pathname==='/api/export' && req.method==='GET') {
+    const now=new Date();
+    return new Response(await exportVault(env.DB,now),{headers:{'Content-Type':'application/zip','Content-Disposition':`attachment; filename="personal-vault-${now.toISOString().slice(0,10)}.zip"`}});
   }
   if(url.pathname==='/api/backlinks' && req.method==='GET') {
     const name=url.searchParams.get('name')||'';
-    const rows=await env.DB.prepare('SELECT name FROM notes WHERE instr(content, ?) > 0 ORDER BY name LIMIT 100').bind('[['+name+']]').all();
-    return Response.json(rows.results);
+    return Response.json((await backlinks(env.DB,name)).notes.map(n=>({name:n.name})));
   }
   return jsonError('Not found.',404);
 }
