@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createNote, readNote, trashNote, updateNote } from './notes';
+import { exportVault } from './export';
 export const hash = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const random = () => crypto.randomUUID()+crypto.randomUUID();
 const now = () => Math.floor(Date.now()/1000);
@@ -90,6 +91,10 @@ export async function browserApi(req: Request,env: Env): Promise<Response> {
       const r=await trashNote(env.DB,name,revision);
       return 'error' in r?jsonError('The note changed elsewhere. Reload it before deleting.',409):Response.json({ok:true,...r});
     }
+  }
+  if(url.pathname==='/api/export' && req.method==='GET') {
+    const now=new Date();
+    return new Response(await exportVault(env.DB,now),{headers:{'Content-Type':'application/zip','Content-Disposition':`attachment; filename="personal-vault-${now.toISOString().slice(0,10)}.zip"`}});
   }
   if(url.pathname==='/api/backlinks' && req.method==='GET') {
     const name=url.searchParams.get('name')||'';
