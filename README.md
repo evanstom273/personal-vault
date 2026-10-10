@@ -11,9 +11,9 @@ A private Markdown notebook on Cloudflare Workers + D1. Open the website to writ
 
 Open the root URL and choose **Open with GitHub**. Only the configured owner can access notes. Browser login reuses the existing GitHub OAuth app, credentials and `/callback` URL; an existing installation needs no additional GitHub setup.
 
-The compact note explorer supports name/content search. Create and edit Markdown, rename a note by changing its name, switch to a sanitized reading preview, follow `[[exact note name]]` links and backlinks, download an individual `.md` file, or delete a note after confirmation. Names can contain `/` to visually group related notes; there is no separate folder tree. On phones, the **Notes** button opens the explorer. **Ctrl/Cmd+S** saves; **Ctrl/Cmd+K** focuses search.
+The compact note explorer supports name/content search. Create and edit Markdown, rename a note by changing its name, switch to a sanitized reading preview, follow `[[exact note name]]` links and backlinks, download an individual `.md` file, or move a note to the trash after confirmation. Names can contain `/` to visually group related notes; there is no separate folder tree. On phones, the **Notes** button opens the explorer. **Ctrl/Cmd+S** saves; **Ctrl/Cmd+K** focuses search.
 
-Saving writes to D1, shared with the MCP connector. Every save, from the browser or MCP, first copies the previous version into revision history (`note_revisions`), so earlier content is never lost; a rename carries the note's history with it. Rename and delete are browser-only. Revision checks reject stale saves and deletes rather than overwrite another revision. Copy a conflicting draft before using **Reload**, which discards the local draft. Renaming does not rewrite wiki links in other notes.
+Saving writes to D1, shared with the MCP connector. Every save, from the browser or MCP, first copies the previous version into revision history (`note_revisions`), so earlier content is never lost; a rename carries the note's history with it. Deleting, from the browser or MCP, moves a note to the trash: it disappears from listing, search and reading but keeps its content and history, and can be restored. A trashed note's name stays reserved until it is restored. Nothing is permanently deleted. Rename is browser-only. Revision checks reject stale saves and deletes rather than overwrite another revision. Copy a conflicting draft before using **Reload**, which discards the local draft. Renaming does not rewrite wiki links in other notes.
 
 IndexedDB stores a per-browser cache of opened notes and unsaved drafts. Drafts are saved locally as you type, while **Save** persists them to D1. Browser sessions last seven days. Session expiration locks the notebook and clears the note cache, but keeps drafts for restoration after the owner signs in again. Explicit **Sign out** clears both cached notes and drafts from that browser. Browser storage can be unavailable or cleared, so it is not a backup.
 
@@ -36,17 +36,20 @@ If ChatGPT asks for OAuth client ID/secret, leave them blank for dynamic registr
 
 | Tool | Behavior |
 | --- | --- |
-| `get_vault_status()` | Read readiness and note count |
+| `get_vault_status()` | Read readiness, note count and trash count |
 | `list_notes()` | Up to 1000 names and creation times; reports truncation |
 | `read_note(name)` | Exact-name lookup, full content, `revision` and `updated_at` |
 | `create_note(name, content)` | Create only; no overwrite; 200-character name / 100000-character content limits |
 | `search_notes(query)` | Literal substring match in name/content, ASCII case-insensitive, up to 100 excerpts; reports truncation |
 | `update_note(name, content, expected_revision)` | Replace content; rejected unless `expected_revision` (from `read_note`) is current; previous version kept in history |
 | `append_to_note(name, content)` | Append on a new line; no revision needed; previous version kept in history; rejected if the note would exceed 100000 characters |
+| `delete_note(name)` | Move to the trash; content and history kept |
+| `restore_note(name)` | Bring a note back from the trash unchanged |
+| `list_trash()` | Trashed notes, most recent first, up to 1000, with excerpts |
 | `list_note_revisions(name)` | Earlier versions, newest first, up to 200, with excerpts |
 | `read_note_revision(name, revision)` | Full content of one version; restore it by passing it to `update_note` |
 
-Names are trimmed and control characters rejected. SQL uses bound parameters. Markdown preview is sanitized; executable HTML, inline styling, forms and images are excluded. There are no MCP rename or delete tools.
+Names are trimmed and control characters rejected. SQL uses bound parameters. Markdown preview is sanitized; executable HTML, inline styling, forms and images are excluded. Listing, reading, searching and writing ignore trashed notes. There is no MCP rename tool and no permanent delete.
 
 ## Architecture and authentication
 

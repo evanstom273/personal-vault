@@ -29,7 +29,7 @@ try{
  await page.waitForFunction(()=>document.querySelector('#title').value==='Keep this draft');
  assert.equal(await page.locator('#content').inputValue(),'Unfinished thought');
  await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
- await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Note deleted');
+ await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Moved to trash');
  await page.locator('#new').click();await page.locator('#title').fill('Browser test');await page.locator('#mode').click();await page.locator('#content').fill('# Saved from browser\n\nTest phrase <script>window.pwned=1</script>');await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
  await page.locator('#content').fill('An unsaved draft');await page.waitForTimeout(500);
  await page.reload();await page.getByRole('button',{name:'Browser test',exact:false}).click();await page.waitForFunction(()=>document.querySelector('#content').value==='An unsaved draft');
@@ -42,7 +42,7 @@ try{
  await page.locator('#save').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Saved');
  await page.locator('#search').fill('unsaved');await page.waitForFunction(()=>document.querySelector('#count').textContent==='1 matches');
  await page.locator('#search').fill('');await page.waitForFunction(()=>document.querySelector('#count').textContent==='4 notes');
- await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Note deleted');
+ await page.locator('#delete').click();await page.waitForFunction(()=>document.querySelector('#status').textContent==='Moved to trash');
  await page.getByRole('button',{name:'Garden / Ideas',exact:false}).click();await page.locator('#mode').click();await page.setViewportSize({width:390,height:844});await page.screenshot({path:'/tmp/vault-ui/mobile.png',fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  assert.equal(await page.locator('#reload').isVisible(),true);

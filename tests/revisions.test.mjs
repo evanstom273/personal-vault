@@ -69,9 +69,9 @@ test('update_note keeps every earlier version and rejects stale revisions',async
     assert.equal((await db.prepare('SELECT count(*) AS c FROM note_revisions WHERE note_name = ?').bind('Other').first()).c,0);
     assert.equal((await mcp.call('read_note',{name:'Plan 2'})).data.content,'browser edit');
 
-    // Until the trash exists, a browser delete still keeps the deleted content in history.
+    // A browser delete moves the note to the trash; its row and content stay.
     assert.equal((await web('/api/note?name=Other',{method:'DELETE',headers:{'If-Match':'1'}})).status,200);
-    const kept=await db.prepare('SELECT content, reason, source FROM note_revisions WHERE note_name = ?').bind('Other').first();
-    assert.deepEqual({...kept},{content:'keep me',reason:'delete',source:'browser'});
+    const kept=await db.prepare('SELECT content, deleted_at FROM notes WHERE name = ?').bind('Other').first();
+    assert.equal(kept.content,'keep me');assert.ok(kept.deleted_at);
   } finally {await mf.dispose();}
 });

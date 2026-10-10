@@ -76,9 +76,9 @@ async function save(){
  await list();await backlinks(n.name);
  }finally{busy=false;$<HTMLButtonElement>('save').disabled=false;}
 }
-async function remove(){if(!current || busy)return;const n=current;if(!confirm(`Permanently delete “${n.name}”? This cannot be undone.`))return;
+async function remove(){if(!current || busy)return;const n=current;if(!confirm(`Move “${n.name}” to the trash? It can be restored later.`))return;
  await api('/api/note?name='+encodeURIComponent(n.name),{method:'DELETE',headers:{'If-Match':String(n.revision)}});
- clearTimeout(draftTimer);await cache(Promise.all([db.table('notes').delete(n.name),db.table('drafts').delete('note:'+n.name)]));current=null;isNew=false;dirty=false;title.value='';content.value='';$('editor').hidden=true;$('empty').hidden=false;for(const id of ['save','mode','reload'])$<HTMLButtonElement>(id).disabled=true;notice();status('Note deleted');await list();}
+ clearTimeout(draftTimer);await cache(Promise.all([db.table('notes').delete(n.name),db.table('drafts').delete('note:'+n.name)]));current=null;isNew=false;dirty=false;title.value='';content.value='';$('editor').hidden=true;$('empty').hidden=false;for(const id of ['save','mode','reload'])$<HTMLButtonElement>(id).disabled=true;notice();status('Moved to trash');await list();}
 for(const input of [title,content]) input.addEventListener('input',()=>{dirty=true;status('Unsaved · draft in this browser');clearTimeout(draftTimer);draftTimer=setTimeout(()=>void storeDraft(),350);countWords();if(preview)renderPreview();});
 $('new').onclick=run(()=>newNote());$('empty-new').onclick=run(()=>newNote());$('save').onclick=run(save);$('delete').onclick=run(remove);
 $('refresh').onclick=run(async()=>{await list();status(dirty?'Unsaved draft':'Note list refreshed');});$('more').onclick=run(()=>list(true));

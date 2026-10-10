@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { snapshot, updateNote } from './notes';
+import { createNote, readNote, trashNote, updateNote } from './notes';
 export const hash = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))),b=>b.toString(16).padStart(2,'0')).join('');
 const random = () => crypto.randomUUID()+crypto.randomUUID();
 const now = () => Math.floor(Date.now()/1000);
@@ -44,6 +44,7 @@ export async function browserCallback(req: Request,env: Env) {
 }
 const input=z.object({name:z.string().trim().min(1).max(200).refine(s=>!/[\x00-\x1f\x7f]/.test(s)),content:z.string().max(100000),revision:z.number().int().positive().optional()});
 const jsonError=(error: string,status=400)=>Response.json({error},{status});
+const nameTaken=(trashed: boolean)=>trashed?'A note in the trash already uses that name. Restore it or choose another name.':'That note name already exists.';
 export async function browserApi(req: Request,env: Env): Promise<Response> {
   const token=cookie(req,'__Host-vault-session');
   const session=token && await env.DB.prepare('SELECT owner_id FROM browser_sessions WHERE token_hash = ? AND expires_at > ?').bind(await hash(token),now()).first<{owner_id:string}>();
@@ -61,19 +62,19 @@ export async function browserApi(req: Request,env: Env): Promise<Response> {
   if(url.pathname==='/api/notes' && req.method==='GET') {
     const q=(url.searchParams.get('q')||'').slice(0,200);
     const after=url.searchParams.get('after')||'';
-    const rows=await env.DB.prepare('SELECT name, created_at, updated_at, revision, substr(content,1,180) AS excerpt FROM notes WHERE name > ? AND (instr(lower(name),lower(?)) > 0 OR instr(lower(content),lower(?)) > 0) ORDER BY name LIMIT 201').bind(after,q,q).all<{name:string}>();
+    const rows=await env.DB.prepare('SELECT name, created_at, updated_at, revision, substr(content,1,180) AS excerpt FROM notes WHERE deleted_at IS NULL AND name > ? AND (instr(lower(name),lower(?)) > 0 OR instr(lower(content),lower(?)) > 0) ORDER BY name LIMIT 201').bind(after,q,q).all<{name:string}>();
     return Response.json({notes:rows.results.slice(0,200),next:rows.results.length>200?rows.results[199].name:null});
   }
   if(url.pathname==='/api/notes' && req.method==='POST') {
     const parsed=input.safeParse(await req.json());if(!parsed.success) return jsonError('Use a name of 1–200 characters and content up to 100000 characters.');
     const {name,content}=parsed.data;
-    const note=await env.DB.prepare('INSERT INTO notes (name,content) VALUES (?,?) ON CONFLICT(name) DO NOTHING RETURNING *').bind(name,content).first();
-    return note?Response.json(note,{status:201}):jsonError('That note name already exists.',409);
+    const r=await createNote(env.DB,name,content);
+    return 'note' in r?Response.json(r.note,{status:201}):jsonError(nameTaken(r.trashed),409);
   }
   if(url.pathname==='/api/note') {
     const name=url.searchParams.get('name');if(!name) return jsonError('Missing note name.');
     if(req.method==='GET') {
-      const note=await env.DB.prepare('SELECT * FROM notes WHERE name = ?').bind(name).first();
+      const note=await readNote(env.DB,name);
       return note?Response.json(note):jsonError('Note not found.',404);
     }
     if(req.method==='PUT') {
@@ -81,19 +82,18 @@ export async function browserApi(req: Request,env: Env): Promise<Response> {
       const {name:newName,content,revision}=parsed.data;if(!revision) return jsonError('Invalid note or missing revision.');
       const r=await updateNote(env.DB,{name,newName,content,revision,source:'browser'});
       if('note' in r) return Response.json(r.note);
-      return r.error==='name_taken'?jsonError('That note name already exists.',409):jsonError('This note changed or was deleted elsewhere. Reload it before saving. Your draft is kept in this browser.',409);
+      return r.error==='name_taken'?jsonError(nameTaken(r.trashed),409):jsonError('This note changed or was deleted elsewhere. Reload it before saving. Your draft is kept in this browser.',409);
     }
     if(req.method==='DELETE') {
       const revision=Number(req.headers.get('If-Match'));
       if(!Number.isInteger(revision)||revision<1) return jsonError('Missing revision.');
-      // Keep a copy in history until deletion moves notes to a recoverable trash.
-      const [,deleted]=await env.DB.batch([snapshot(env.DB,name,revision,'delete','browser'),env.DB.prepare('DELETE FROM notes WHERE name = ? AND revision = ? RETURNING name').bind(name,revision)]);
-      return deleted.results.length?Response.json({ok:true}):jsonError('The note changed elsewhere. Reload it before deleting.',409);
+      const r=await trashNote(env.DB,name,revision);
+      return 'error' in r?jsonError('The note changed elsewhere. Reload it before deleting.',409):Response.json({ok:true,...r});
     }
   }
   if(url.pathname==='/api/backlinks' && req.method==='GET') {
     const name=url.searchParams.get('name')||'';
-    const rows=await env.DB.prepare('SELECT name FROM notes WHERE instr(content, ?) > 0 ORDER BY name LIMIT 100').bind('[['+name+']]').all();
+    const rows=await env.DB.prepare('SELECT name FROM notes WHERE deleted_at IS NULL AND instr(content, ?) > 0 ORDER BY name LIMIT 100').bind('[['+name+']]').all();
     return Response.json(rows.results);
   }
   return jsonError('Not found.',404);
