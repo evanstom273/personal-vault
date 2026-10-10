@@ -26,6 +26,12 @@ test('update_note keeps every earlier version and rejects stale revisions',async
     assert.equal((await mcp.call('update_note',{name:'Plan',content:'v3',expected_revision:2})).data.revision,3);
     assert.equal((await mcp.call('read_note',{name:'Plan'})).data.content,'v3');
 
+    // Saving identical content is a no-op: no new revision, no duplicate history.
+    const same=(await mcp.call('update_note',{name:'Plan',content:'v3',expected_revision:3})).data;
+    assert.deepEqual([same.revision,same.changed],[3,false]);
+    assert.equal(await historyCount(),2);
+    assert.match((await mcp.call('update_note',{name:'Plan',content:'v3',expected_revision:2})).data.error,/current revision is 3/);
+
     const history=(await mcp.call('list_note_revisions',{name:'Plan'})).data;
     assert.equal(history.current.revision,3);
     assert.deepEqual(history.revisions.map(r=>[r.revision,r.excerpt,r.reason,r.source]),[[2,'v2','update','mcp'],[1,'v1','update','mcp']]);
@@ -68,6 +74,9 @@ test('update_note keeps every earlier version and rejects stale revisions',async
     assert.equal(await historyCount(),5);
     assert.equal((await db.prepare('SELECT count(*) AS c FROM note_revisions WHERE note_name = ?').bind('Other').first()).c,0);
     assert.equal((await mcp.call('read_note',{name:'Plan 2'})).data.content,'browser edit');
+    const resave=await web('/api/note?name=Plan%202',{method:'PUT',body:{name:'Plan 2',content:'browser edit',revision:6}});
+    assert.equal(resave.status,200);assert.equal((await resave.json()).revision,6);
+    assert.equal(await historyCount(),5);
 
     // A browser delete moves the note to the trash; its row and content stay.
     assert.equal((await web('/api/note?name=Other',{method:'DELETE',headers:{'If-Match':'1'}})).status,200);

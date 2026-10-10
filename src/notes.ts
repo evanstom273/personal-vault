@@ -16,10 +16,6 @@ const ARCHIVE = 'INSERT INTO note_revisions (note_name, revision, name, content,
 
 const LIVE = 'deleted_at IS NULL';
 
-// Archives the live note as it is at `revision`; matches nothing if it has moved on.
-const snapshot = (db: D1Database, name: string, revision: number, reason: 'update' | 'rename', source: Source) =>
-  db.prepare(`${ARCHIVE} WHERE name = ? AND revision = ? AND ${LIVE}`).bind(reason, source, name, revision);
-
 const state = (db: D1Database, name: string) => db.prepare('SELECT revision, deleted_at FROM notes WHERE name = ?').bind(name).first<{revision: number; deleted_at: string | null}>();
 
 type Failure = {error: 'not_found' | 'trashed'} | {error: 'conflict'; current: number};
@@ -39,13 +35,19 @@ export async function createNote(db: D1Database, name: string, content: string):
 
 export async function updateNote(db: D1Database, {name, newName = name, content, revision, source}: {name: string; newName?: string; content: string; revision: number; source: Source}): Promise<WriteResult> {
   const renamed = newName !== name;
-  const statements = [snapshot(db, name, revision, renamed ? 'rename' : 'update', source)];
+  // Matches the live note at `revision`, unless the save would change nothing.
+  const guard = `name = ? AND revision = ? AND ${LIVE}${renamed ? '' : ' AND content <> ?'}`;
+  const args = renamed ? [name, revision] : [name, revision, content];
+  const statements = [db.prepare(`${ARCHIVE} WHERE ${guard}`).bind(renamed ? 'rename' : 'update', source, ...args)];
   // History follows a rename. Must run before the notes update changes the name.
   if (renamed) statements.push(db.prepare(`UPDATE note_revisions SET note_name = ? WHERE note_name = ? AND EXISTS (SELECT 1 FROM notes WHERE name = ? AND revision = ? AND ${LIVE})`).bind(newName, name, name, revision));
-  statements.push(db.prepare(`UPDATE notes SET name = ?, content = ?, revision = revision + 1, updated_at = ${NOW} WHERE name = ? AND revision = ? AND ${LIVE} RETURNING ${NOTE_COLUMNS}`).bind(newName, content, name, revision));
+  statements.push(db.prepare(`UPDATE notes SET name = ?, content = ?, revision = revision + 1, updated_at = ${NOW} WHERE ${guard} RETURNING ${NOTE_COLUMNS}`).bind(newName, content, ...args));
   try {
     const note = (await db.batch<Note>(statements)).at(-1)!.results[0];
-    return note ? {note} : failure(db, name);
+    if (note) return {note};
+    // An unchanged save succeeds without a new revision or a duplicate history entry.
+    const unchanged = renamed ? null : await db.prepare(`SELECT ${NOTE_COLUMNS} FROM notes WHERE ${guard.replace('content <>', 'content =')}`).bind(...args).first<Note>();
+    return unchanged ? {note: unchanged} : failure(db, name);
   } catch (err) {
     if (String(err).includes('UNIQUE constraint')) return {error: 'name_taken', trashed: !!(await state(db, newName))?.deleted_at};
     throw err;
